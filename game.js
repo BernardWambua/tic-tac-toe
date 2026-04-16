@@ -411,7 +411,7 @@ function renderOnlineState(data) {
 function onCellClick(index) {
   if (gameMode === 'local') {
     handleLocalClick(index);
-  } else {
+  } else if (gameMode === 'online') {
     handleOnlineClick(index);
   }
 }
