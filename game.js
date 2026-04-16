@@ -10,17 +10,33 @@ const WINNING_COMBOS = [
 const auth = firebase.auth();
 const db   = firebase.firestore();
 
+// ---- Game mode ----
+let gameMode = null; // 'local' | 'online'
+
+// ---- Online state ----
 let currentUser  = null;
 let currentRoom  = null;
 let mySymbol     = null;
-let introSpoken  = false;
 let unsubscribe  = null;
+
+// ---- Local state ----
+const local = {
+  board:         Array(9).fill(null),
+  currentPlayer: 'X',
+  scores:        { X: 0, O: 0, draw: 0 },
+  players:       { X: 'Player 1', O: 'Player 2' },
+  gameOver:      false,
+};
+
+let introSpoken = false;
 
 // ---- Screen helpers ----
 const screens = {
-  auth:  document.getElementById('authScreen'),
-  lobby: document.getElementById('lobbyScreen'),
-  game:  document.getElementById('gameArea'),
+  mode:       document.getElementById('modeScreen'),
+  localSetup: document.getElementById('localSetupScreen'),
+  auth:       document.getElementById('authScreen'),
+  lobby:      document.getElementById('lobbyScreen'),
+  game:       document.getElementById('gameArea'),
 };
 
 function showScreen(name) {
@@ -29,17 +45,130 @@ function showScreen(name) {
 }
 
 // ==================================================
-// AUTH
+// MODE SELECT
+// ==================================================
+document.getElementById('localModeBtn').addEventListener('click', () => {
+  gameMode = 'local';
+  showScreen('localSetup');
+});
+
+document.getElementById('onlineModeBtn').addEventListener('click', () => {
+  gameMode = 'online';
+  // If already signed in go straight to lobby, else show auth
+  if (currentUser) showScreen('lobby');
+  else showScreen('auth');
+});
+
+document.getElementById('backFromLocalBtn').addEventListener('click', () => showScreen('mode'));
+document.getElementById('backFromAuthBtn').addEventListener('click', () => showScreen('mode'));
+
+// ==================================================
+// LOCAL MULTIPLAYER
+// ==================================================
+document.getElementById('startLocalBtn').addEventListener('click', startLocalGame);
+
+function sanitize(str) {
+  const div = document.createElement('div');
+  div.appendChild(document.createTextNode(str));
+  return div.innerHTML;
+}
+
+function startLocalGame() {
+  const n1 = document.getElementById('player1Name').value.trim();
+  const n2 = document.getElementById('player2Name').value.trim();
+  local.players.X = sanitize(n1 || 'Player 1');
+  local.players.O = sanitize(n2 || 'Player 2');
+  local.scores = { X: 0, O: 0, draw: 0 };
+
+  enterLocalGame();
+}
+
+function enterLocalGame() {
+  introSpoken = false;
+  resetLocalBoard();
+  document.getElementById('roomCodeDisplay').textContent = 'Local Game';
+  document.getElementById('leaveRoomBtn').textContent = 'New Game';
+  showScreen('game');
+  updateLocalScoreboard();
+
+  speak(
+    `Welcome to Tic Tac Toe! ${local.players.X} plays X, ` +
+    `${local.players.O} plays O. ${local.players.X} goes first. Good luck!`
+  );
+}
+
+function resetLocalBoard() {
+  local.board.fill(null);
+  local.currentPlayer = 'X';
+  local.gameOver = false;
+  introSpoken = false;
+
+  cells.forEach(cell => {
+    cell.textContent = '';
+    cell.className = 'cell';
+  });
+
+  setStatus(`${local.players[local.currentPlayer]}'s turn (${local.currentPlayer})`);
+  updateLocalActiveCard();
+}
+
+function updateLocalScoreboard() {
+  document.getElementById('scoreLabel1').textContent = local.players.X;
+  document.getElementById('scoreLabel2').textContent = local.players.O;
+  document.getElementById('score1').textContent      = local.scores.X;
+  document.getElementById('score2').textContent      = local.scores.O;
+  document.getElementById('scoreDraw').textContent   = local.scores.draw;
+}
+
+function updateLocalActiveCard() {
+  scoreCard1.classList.toggle('active-turn', local.currentPlayer === 'X');
+  scoreCard2.classList.toggle('active-turn', local.currentPlayer === 'O');
+}
+
+function handleLocalClick(index) {
+  if (local.board[index] || local.gameOver) return;
+
+  local.board[index] = local.currentPlayer;
+  const cell = cells[index];
+  cell.textContent = local.currentPlayer;
+  cell.classList.add('taken', local.currentPlayer.toLowerCase());
+
+  const winner = checkWinner(local.board);
+  if (winner) {
+    const combo = findWinningCombo(local.board);
+    if (combo) combo.forEach(i => cells[i].classList.add('winning'));
+    local.scores[winner]++;
+    updateLocalScoreboard();
+    setStatus(`${local.players[winner]} wins! 🎉`);
+    speak(`Congratulations ${local.players[winner]}! You won! Well played!`);
+    local.gameOver = true;
+    return;
+  }
+
+  if (local.board.every(Boolean)) {
+    local.scores.draw++;
+    updateLocalScoreboard();
+    setStatus("It's a draw!");
+    speak("It's a draw! Great game, both players!");
+    local.gameOver = true;
+    return;
+  }
+
+  local.currentPlayer = local.currentPlayer === 'X' ? 'O' : 'X';
+  setStatus(`${local.players[local.currentPlayer]}'s turn (${local.currentPlayer})`);
+  updateLocalActiveCard();
+}
+
+// ==================================================
+// ONLINE AUTH
 // ==================================================
 auth.onAuthStateChanged(user => {
+  currentUser = user || null;
   if (user) {
-    currentUser = user;
     document.getElementById('lobbyUserName').textContent =
       user.displayName || user.email;
-    showScreen('lobby');
-  } else {
-    currentUser = null;
-    showScreen('auth');
+    // Only redirect to lobby if we're in online mode flow
+    if (gameMode === 'online' && !currentRoom) showScreen('lobby');
   }
 });
 
@@ -47,7 +176,11 @@ let authMode = 'login';
 
 document.getElementById('authSubmit').addEventListener('click', handleAuth);
 document.getElementById('authToggle').addEventListener('click', toggleAuthMode);
-document.getElementById('signOutBtn').addEventListener('click', () => auth.signOut());
+document.getElementById('signOutBtn').addEventListener('click', async () => {
+  await auth.signOut();
+  gameMode = null;
+  showScreen('mode');
+});
 
 function toggleAuthMode() {
   authMode = authMode === 'login' ? 'register' : 'login';
@@ -74,15 +207,16 @@ async function handleAuth() {
 
   try {
     if (authMode === 'register') {
-      const rawName    = document.getElementById('displayNameInput').value.trim();
+      const rawName     = document.getElementById('displayNameInput').value.trim();
       const displayName = rawName || email.split('@')[0];
       const cred = await auth.createUserWithEmailAndPassword(email, password);
       await cred.user.updateProfile({ displayName });
     } else {
       await auth.signInWithEmailAndPassword(email, password);
     }
+    showScreen('lobby');
   } catch (err) {
-    errorEl.textContent = friendlyAuthError(err.code);
+    document.getElementById('authError').textContent = friendlyAuthError(err.code);
   }
 }
 
@@ -99,7 +233,7 @@ function friendlyAuthError(code) {
 }
 
 // ==================================================
-// LOBBY
+// ONLINE LOBBY
 // ==================================================
 document.getElementById('createRoomBtn').addEventListener('click', createRoom);
 document.getElementById('joinRoomBtn').addEventListener('click', joinRoom);
@@ -127,7 +261,7 @@ async function createRoom() {
 
     currentRoom = roomId;
     mySymbol    = 'X';
-    enterGame(roomId);
+    enterOnlineGame(roomId);
   } catch (err) {
     console.error('createRoom error:', err);
     lobbyError.textContent = `Failed to create room: ${err.message}`;
@@ -176,7 +310,7 @@ async function joinRoom() {
 
     currentRoom = roomId;
     mySymbol    = 'O';
-    enterGame(roomId);
+    enterOnlineGame(roomId);
   } catch (err) {
     console.error('joinRoom error:', err);
     lobbyError.textContent = `Failed to join room: ${err.message}`;
@@ -191,35 +325,36 @@ function generateRoomCode() {
 }
 
 // ==================================================
-// GAME
+// ONLINE GAME
 // ==================================================
 const cells      = document.querySelectorAll('.cell');
 const statusEl   = document.getElementById('status');
 const scoreCard1 = document.getElementById('scoreCard1');
 const scoreCard2 = document.getElementById('scoreCard2');
 
-// Capture index in the closure at bind time — avoids event.currentTarget being
-// nulled by the browser when an async function yields (even before its first await).
 cells.forEach(cell => {
   const index = parseInt(cell.dataset.index, 10);
   cell.addEventListener('click', () => onCellClick(index));
 });
-document.getElementById('restartBtn').addEventListener('click', restartRound);
-document.getElementById('leaveRoomBtn').addEventListener('click', leaveRoom);
 
-function enterGame(roomId) {
+document.getElementById('restartBtn').addEventListener('click', restartRound);
+document.getElementById('leaveRoomBtn').addEventListener('click', leaveGame);
+document.getElementById('newGameBtn').addEventListener('click', leaveGame);
+
+function enterOnlineGame(roomId) {
   introSpoken = false;
   showScreen('game');
   document.getElementById('roomCodeDisplay').textContent = `Room: ${roomId}`;
+  document.getElementById('leaveRoomBtn').textContent = 'Leave Room';
 
   if (unsubscribe) unsubscribe();
   unsubscribe = db.collection('rooms').doc(roomId).onSnapshot(snap => {
-    if (!snap.exists) { leaveRoom(); return; }
-    renderGameState(snap.data());
+    if (!snap.exists) { leaveGame(); return; }
+    renderOnlineState(snap.data());
   });
 }
 
-function renderGameState(data) {
+function renderOnlineState(data) {
   const nameX = data.players.X?.name || 'Player X';
   const nameO = data.players.O?.name || 'Waiting...';
 
@@ -245,7 +380,7 @@ function renderGameState(data) {
   }
 
   if (data.status === 'waiting') {
-    setStatus('Waiting for opponent to join\u2026');
+    setStatus('Waiting for opponent to join…');
     return;
   }
 
@@ -254,7 +389,7 @@ function renderGameState(data) {
     speak("It's a draw! Great game, both players!");
   } else if (data.winner) {
     const winnerName = data.players[data.winner]?.name || data.winner;
-    setStatus(`${winnerName} wins! \ud83c\udf89`);
+    setStatus(`${winnerName} wins! 🎉`);
     if (data.winner === mySymbol) speak(`Congratulations ${winnerName}! You won! Well played!`);
     else speak(`${winnerName} wins! Better luck next time!`);
   } else {
@@ -273,7 +408,15 @@ function renderGameState(data) {
   }
 }
 
-async function onCellClick(index) {
+function onCellClick(index) {
+  if (gameMode === 'local') {
+    handleLocalClick(index);
+  } else {
+    handleOnlineClick(index);
+  }
+}
+
+async function handleOnlineClick(index) {
   if (!currentRoom || !mySymbol) return;
 
   const roomRef = db.collection('rooms').doc(currentRoom);
@@ -302,6 +445,10 @@ async function onCellClick(index) {
 }
 
 async function restartRound() {
+  if (gameMode === 'local') {
+    resetLocalBoard();
+    return;
+  }
   if (!currentRoom) return;
   introSpoken = false;
   await db.collection('rooms').doc(currentRoom).update({
@@ -312,13 +459,18 @@ async function restartRound() {
   });
 }
 
-function leaveRoom() {
-  if (unsubscribe) { unsubscribe(); unsubscribe = null; }
-  currentRoom = null;
-  mySymbol    = null;
+function leaveGame() {
+  if (gameMode === 'online') {
+    if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+    currentRoom = null;
+    mySymbol    = null;
+    document.getElementById('roomCodeInput').value = '';
+    showScreen('lobby');
+  } else {
+    gameMode = null;
+    showScreen('mode');
+  }
   introSpoken = false;
-  document.getElementById('roomCodeInput').value = '';
-  showScreen('lobby');
 }
 
 // ==================================================
@@ -351,3 +503,5 @@ function speak(text) {
 function setStatus(msg) {
   statusEl.textContent = msg;
 }
+
+

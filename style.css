@@ -48,6 +48,24 @@ h1 {
   margin-bottom: 0.25rem;
 }
 
+/* ---- Mode Select ---- */
+.mode-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  padding: 1rem 1.25rem;
+  text-align: left;
+  font-size: 1.05rem;
+}
+
+.mode-desc {
+  font-size: 0.8rem;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+
 /* ---- Auth Screen ---- */
 .btn-link {
   background: none;
