@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tic-Tac-Toe</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Tic-Tac-Toe</h1>
+
+    <!-- ── Screen 1: Auth ── -->
+    <div id="authScreen" class="card">
+      <h2 id="authTitle">Sign In</h2>
+
+      <div id="displayNameGroup" class="input-group hidden">
+        <label for="displayNameInput">Display Name</label>
+        <input type="text" id="displayNameInput" placeholder="Your name in game" maxlength="20" />
+      </div>
+      <div class="input-group">
+        <label for="authEmail">Email</label>
+        <input type="email" id="authEmail" placeholder="you@example.com" />
+      </div>
+      <div class="input-group">
+        <label for="authPassword">Password</label>
+        <input type="password" id="authPassword" placeholder="••••••••" />
+      </div>
+      <p class="error" id="authError"></p>
+      <button id="authSubmit" class="btn btn-primary">Sign In</button>
+      <button id="authToggle" class="btn btn-link">Don't have an account? Register</button>
+    </div>
+
+    <!-- ── Screen 2: Lobby ── -->
+    <div id="lobbyScreen" class="card hidden">
+      <div class="lobby-header">
+        <span>Welcome, <strong id="lobbyUserName"></strong></span>
+        <button id="signOutBtn" class="btn btn-link">Sign Out</button>
+      </div>
+
+      <button id="createRoomBtn" class="btn btn-primary">Create Room</button>
+
+      <div class="divider">— or join with a code —</div>
+
+      <div class="input-group">
+        <label for="roomCodeInput">Room Code</label>
+        <input type="text" id="roomCodeInput" placeholder="e.g. A3KP9Z" maxlength="6"
+               style="text-transform:uppercase; letter-spacing: 4px; font-size:1.2rem;" />
+      </div>
+      <button id="joinRoomBtn" class="btn btn-secondary">Join Room</button>
+      <p class="error" id="lobbyError"></p>
+    </div>
+
+    <!-- ── Screen 3: Game ── -->
+    <div id="gameArea" class="game-area hidden">
+      <div class="room-info">
+        <span id="roomCodeDisplay" class="room-badge"></span>
+        <button id="leaveRoomBtn" class="btn btn-outline btn-sm">Leave Room</button>
+      </div>
+
+      <div class="status" id="status"></div>
+
+      <div class="scoreboard">
+        <div class="score-card" id="scoreCard1">
+          <span class="score-name" id="scoreLabel1">Player X</span>
+          <span class="score-value" id="score1">0</span>
+        </div>
+        <div class="score-card draws">
+          <span class="score-name">Draws</span>
+          <span class="score-value" id="scoreDraw">0</span>
+        </div>
+        <div class="score-card" id="scoreCard2">
+          <span class="score-name" id="scoreLabel2">Player O</span>
+          <span class="score-value" id="score2">0</span>
+        </div>
+      </div>
+
+      <div class="board" id="board">
+        <div class="cell" data-index="0"></div>
+        <div class="cell" data-index="1"></div>
+        <div class="cell" data-index="2"></div>
+        <div class="cell" data-index="3"></div>
+        <div class="cell" data-index="4"></div>
+        <div class="cell" data-index="5"></div>
+        <div class="cell" data-index="6"></div>
+        <div class="cell" data-index="7"></div>
+        <div class="cell" data-index="8"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-secondary" id="restartBtn">Restart Round</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDKs (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
