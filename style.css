@@ -31,7 +31,90 @@ h1 {
   background-clip: text;
 }
 
-/* ---- Player Setup ---- */
+/* ---- Shared Card ---- */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  background: #16213e;
+  padding: 2rem;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.card h2 {
+  font-size: 1.5rem;
+  color: #eee;
+  margin-bottom: 0.25rem;
+}
+
+/* ---- Auth Screen ---- */
+.btn-link {
+  background: none;
+  border: none;
+  color: #e94560;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.btn-link:hover {
+  opacity: 0.75;
+}
+
+.error {
+  color: #e94560;
+  font-size: 0.85rem;
+  min-height: 1.2rem;
+}
+
+/* ---- Lobby Screen ---- */
+.lobby-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.95rem;
+  color: #aaa;
+}
+
+.lobby-header strong {
+  color: #eee;
+}
+
+.divider {
+  color: #555;
+  font-size: 0.8rem;
+  text-align: center;
+  margin: 0.25rem 0;
+}
+
+/* ---- Room Info bar ---- */
+.room-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.room-badge {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #aaa;
+  background: #16213e;
+  padding: 0.3rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #0f3460;
+}
+
+.btn-sm {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+/* ---- Player Setup (kept for reference) ---- */
 .player-setup {
   display: flex;
   flex-direction: column;

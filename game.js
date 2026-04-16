@@ -1,162 +1,332 @@
 'use strict';
 
 const WINNING_COMBOS = [
-  [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
-  [0, 3, 6], [1, 4, 7], [2, 5, 8], // columns
-  [0, 4, 8], [2, 4, 6],             // diagonals
+  [0, 1, 2], [3, 4, 5], [6, 7, 8],
+  [0, 3, 6], [1, 4, 7], [2, 5, 8],
+  [0, 4, 8], [2, 4, 6],
 ];
 
-const state = {
-  board: Array(9).fill(null),
-  currentPlayer: 'X',
-  scores: { X: 0, O: 0, draw: 0 },
-  players: { X: 'Player 1', O: 'Player 2' },
-  gameOver: false,
+// ---- Firebase refs ----
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+let currentUser  = null;
+let currentRoom  = null;
+let mySymbol     = null;
+let introSpoken  = false;
+let unsubscribe  = null;
+
+// ---- Screen helpers ----
+const screens = {
+  auth:  document.getElementById('authScreen'),
+  lobby: document.getElementById('lobbyScreen'),
+  game:  document.getElementById('gameArea'),
 };
 
-// DOM refs
-const playerSetup = document.getElementById('playerSetup');
-const gameArea    = document.getElementById('gameArea');
-const statusEl    = document.getElementById('status');
-const cells       = document.querySelectorAll('.cell');
-const scoreEl1    = document.getElementById('score1');
-const scoreEl2    = document.getElementById('score2');
-const scoreElDraw = document.getElementById('scoreDraw');
-const scoreLabel1 = document.getElementById('scoreLabel1');
-const scoreLabel2 = document.getElementById('scoreLabel2');
-const scoreCard1  = document.getElementById('scoreCard1');
-const scoreCard2  = document.getElementById('scoreCard2');
-
-document.getElementById('startBtn').addEventListener('click', startGame);
-document.getElementById('restartBtn').addEventListener('click', resetRound);
-document.getElementById('newGameBtn').addEventListener('click', newGame);
-cells.forEach(cell => cell.addEventListener('click', onCellClick));
-
-// ---- Speech ----
-function speak(text, onEnd) {
-  if (!window.speechSynthesis) return onEnd && onEnd();
-  window.speechSynthesis.cancel();
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.rate = 0.95;
-  utter.pitch = 1;
-  if (onEnd) utter.onend = onEnd;
-  window.speechSynthesis.speak(utter);
+function showScreen(name) {
+  Object.values(screens).forEach(s => s.classList.add('hidden'));
+  screens[name].classList.remove('hidden');
 }
 
-function startGame() {
-  const name1 = document.getElementById('player1Name').value.trim() || 'Player 1';
-  const name2 = document.getElementById('player2Name').value.trim() || 'Player 2';
-  state.players.X = sanitize(name1);
-  state.players.O = sanitize(name2);
+// ==================================================
+// AUTH
+// ==================================================
+auth.onAuthStateChanged(user => {
+  if (user) {
+    currentUser = user;
+    document.getElementById('lobbyUserName').textContent =
+      user.displayName || user.email;
+    showScreen('lobby');
+  } else {
+    currentUser = null;
+    showScreen('auth');
+  }
+});
 
-  scoreLabel1.textContent = state.players.X;
-  scoreLabel2.textContent = state.players.O;
+let authMode = 'login';
 
-  state.scores = { X: 0, O: 0, draw: 0 };
-  updateScoreboard();
+document.getElementById('authSubmit').addEventListener('click', handleAuth);
+document.getElementById('authToggle').addEventListener('click', toggleAuthMode);
+document.getElementById('signOutBtn').addEventListener('click', () => auth.signOut());
 
-  playerSetup.classList.add('hidden');
-  gameArea.classList.remove('hidden');
-  resetRound();
-
-  const introText = `Welcome to Tic Tac Toe! ` +
-    `Player one is ${state.players.X}, playing as X. ` +
-    `Player two is ${state.players.O}, playing as O. ` +
-    `${state.players.X} goes first. Good luck!`;
-  speak(introText);
+function toggleAuthMode() {
+  authMode = authMode === 'login' ? 'register' : 'login';
+  const isReg = authMode === 'register';
+  document.getElementById('authTitle').textContent    = isReg ? 'Create Account' : 'Sign In';
+  document.getElementById('authSubmit').textContent   = isReg ? 'Register' : 'Sign In';
+  document.getElementById('authToggle').textContent   = isReg
+    ? 'Already have an account? Sign In'
+    : "Don't have an account? Register";
+  document.getElementById('displayNameGroup').classList.toggle('hidden', !isReg);
+  document.getElementById('authError').textContent = '';
 }
 
-function onCellClick(event) {
-  const index = parseInt(event.currentTarget.dataset.index, 10);
-  if (state.board[index] || state.gameOver) return;
+async function handleAuth() {
+  const email    = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const errorEl  = document.getElementById('authError');
+  errorEl.textContent = '';
 
-  state.board[index] = state.currentPlayer;
-  renderCell(event.currentTarget, state.currentPlayer);
-
-  const winner = checkWinner();
-  if (winner) {
-    highlightWinningCells(winner.combo);
-    state.scores[state.currentPlayer]++;
-    updateScoreboard();
-    setStatus(`${state.players[state.currentPlayer]} wins! 🎉`);
-    state.gameOver = true;
-    speak(`Congratulations ${state.players[state.currentPlayer]}! You won! Well played!`);
+  if (!email || !password) {
+    errorEl.textContent = 'Please fill in all fields.';
     return;
   }
 
-  if (state.board.every(Boolean)) {
-    state.scores.draw++;
-    updateScoreboard();
-    setStatus("It's a draw!");
-    state.gameOver = true;
-    speak("It's a draw! Great game, both players!");
-    return;
-  }
-
-  state.currentPlayer = state.currentPlayer === 'X' ? 'O' : 'X';
-  setStatus(`${state.players[state.currentPlayer]}'s turn (${state.currentPlayer})`);
-  updateActiveCard();
-}
-
-function checkWinner() {
-  for (const combo of WINNING_COMBOS) {
-    const [a, b, c] = combo;
-    if (
-      state.board[a] &&
-      state.board[a] === state.board[b] &&
-      state.board[a] === state.board[c]
-    ) {
-      return { player: state.board[a], combo };
+  try {
+    if (authMode === 'register') {
+      const rawName    = document.getElementById('displayNameInput').value.trim();
+      const displayName = rawName || email.split('@')[0];
+      const cred = await auth.createUserWithEmailAndPassword(email, password);
+      await cred.user.updateProfile({ displayName });
+    } else {
+      await auth.signInWithEmailAndPassword(email, password);
     }
+  } catch (err) {
+    errorEl.textContent = friendlyAuthError(err.code);
+  }
+}
+
+function friendlyAuthError(code) {
+  const map = {
+    'auth/email-already-in-use': 'That email is already registered.',
+    'auth/invalid-email':        'Invalid email address.',
+    'auth/weak-password':        'Password must be at least 6 characters.',
+    'auth/user-not-found':       'No account found with that email.',
+    'auth/wrong-password':       'Incorrect password.',
+    'auth/invalid-credential':   'Invalid email or password.',
+  };
+  return map[code] || 'Something went wrong. Please try again.';
+}
+
+// ==================================================
+// LOBBY
+// ==================================================
+document.getElementById('createRoomBtn').addEventListener('click', createRoom);
+document.getElementById('joinRoomBtn').addEventListener('click', joinRoom);
+
+async function createRoom() {
+  const lobbyError = document.getElementById('lobbyError');
+  lobbyError.textContent = '';
+  const playerName = currentUser.displayName || currentUser.email;
+  const roomId = generateRoomCode();
+
+  await db.collection('rooms').doc(roomId).set({
+    board:         Array(9).fill(null),
+    currentPlayer: 'X',
+    players:       { X: { uid: currentUser.uid, name: playerName }, O: null },
+    status:        'waiting',
+    winner:        null,
+    scores:        { X: 0, O: 0, draw: 0 },
+    createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
+  });
+
+  currentRoom = roomId;
+  mySymbol    = 'X';
+  enterGame(roomId);
+}
+
+async function joinRoom() {
+  const lobbyError = document.getElementById('lobbyError');
+  lobbyError.textContent = '';
+  const roomId = document.getElementById('roomCodeInput').value.trim().toUpperCase();
+
+  if (roomId.length !== 6) {
+    lobbyError.textContent = 'Please enter a valid 6-character room code.';
+    return;
+  }
+
+  const roomRef = db.collection('rooms').doc(roomId);
+  const snap    = await roomRef.get();
+
+  if (!snap.exists) {
+    lobbyError.textContent = 'Room not found. Check the code and try again.';
+    return;
+  }
+
+  const data = snap.data();
+
+  if (data.status !== 'waiting') {
+    lobbyError.textContent = 'This room is already full or the game has ended.';
+    return;
+  }
+
+  if (data.players.X && data.players.X.uid === currentUser.uid) {
+    lobbyError.textContent = "You can't join your own room with the same account.";
+    return;
+  }
+
+  const playerName = currentUser.displayName || currentUser.email;
+  await roomRef.update({
+    'players.O': { uid: currentUser.uid, name: playerName },
+    status:      'playing',
+  });
+
+  currentRoom = roomId;
+  mySymbol    = 'O';
+  enterGame(roomId);
+}
+
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({ length: 6 }, () =>
+    chars[Math.floor(Math.random() * chars.length)]
+  ).join('');
+}
+
+// ==================================================
+// GAME
+// ==================================================
+const cells      = document.querySelectorAll('.cell');
+const statusEl   = document.getElementById('status');
+const scoreCard1 = document.getElementById('scoreCard1');
+const scoreCard2 = document.getElementById('scoreCard2');
+
+cells.forEach(cell => cell.addEventListener('click', onCellClick));
+document.getElementById('restartBtn').addEventListener('click', restartRound);
+document.getElementById('leaveRoomBtn').addEventListener('click', leaveRoom);
+
+function enterGame(roomId) {
+  introSpoken = false;
+  showScreen('game');
+  document.getElementById('roomCodeDisplay').textContent = `Room: ${roomId}`;
+
+  if (unsubscribe) unsubscribe();
+  unsubscribe = db.collection('rooms').doc(roomId).onSnapshot(snap => {
+    if (!snap.exists) { leaveRoom(); return; }
+    renderGameState(snap.data());
+  });
+}
+
+function renderGameState(data) {
+  const nameX = data.players.X?.name || 'Player X';
+  const nameO = data.players.O?.name || 'Waiting...';
+
+  document.getElementById('scoreLabel1').textContent = nameX;
+  document.getElementById('scoreLabel2').textContent = nameO;
+  document.getElementById('score1').textContent      = data.scores.X;
+  document.getElementById('score2').textContent      = data.scores.O;
+  document.getElementById('scoreDraw').textContent   = data.scores.draw;
+
+  cells.forEach((cell, i) => {
+    const val = data.board[i];
+    cell.textContent = val || '';
+    cell.className   = 'cell';
+    if (val) cell.classList.add('taken', val.toLowerCase());
+  });
+
+  scoreCard1.classList.remove('active-turn');
+  scoreCard2.classList.remove('active-turn');
+
+  if (data.winner && data.winner !== 'draw') {
+    const combo = findWinningCombo(data.board);
+    if (combo) combo.forEach(i => cells[i].classList.add('winning'));
+  }
+
+  if (data.status === 'waiting') {
+    setStatus('Waiting for opponent to join\u2026');
+    return;
+  }
+
+  if (data.winner === 'draw') {
+    setStatus("It's a draw!");
+    speak("It's a draw! Great game, both players!");
+  } else if (data.winner) {
+    const winnerName = data.players[data.winner]?.name || data.winner;
+    setStatus(`${winnerName} wins! \ud83c\udf89`);
+    if (data.winner === mySymbol) speak(`Congratulations ${winnerName}! You won! Well played!`);
+    else speak(`${winnerName} wins! Better luck next time!`);
+  } else {
+    const turnName = data.players[data.currentPlayer]?.name || data.currentPlayer;
+    setStatus(`${turnName}'s turn (${data.currentPlayer})`);
+    if (data.currentPlayer === 'X') scoreCard1.classList.add('active-turn');
+    else scoreCard2.classList.add('active-turn');
+
+    if (!introSpoken) {
+      introSpoken = true;
+      speak(
+        `Welcome to Tic Tac Toe! ${nameX} plays X, ${nameO} plays O. ` +
+        `${nameX} goes first. Good luck!`
+      );
+    }
+  }
+}
+
+async function onCellClick(event) {
+  if (!currentRoom || !mySymbol) return;
+
+  const roomRef = db.collection('rooms').doc(currentRoom);
+  const snap    = await roomRef.get();
+  const data    = snap.data();
+
+  const index = parseInt(event.currentTarget.dataset.index, 10);
+  if (data.board[index] || data.winner || data.status !== 'playing') return;
+  if (data.currentPlayer !== mySymbol) return;
+
+  const newBoard = [...data.board];
+  newBoard[index] = mySymbol;
+
+  const winner = checkWinner(newBoard);
+  const isDraw = !winner && newBoard.every(Boolean);
+
+  const newScores = { ...data.scores };
+  if (winner) newScores[winner]++;
+  else if (isDraw) newScores.draw++;
+
+  await roomRef.update({
+    board:         newBoard,
+    currentPlayer: mySymbol === 'X' ? 'O' : 'X',
+    winner:        winner || (isDraw ? 'draw' : null),
+    scores:        newScores,
+  });
+}
+
+async function restartRound() {
+  if (!currentRoom) return;
+  introSpoken = false;
+  await db.collection('rooms').doc(currentRoom).update({
+    board:         Array(9).fill(null),
+    currentPlayer: 'X',
+    winner:        null,
+    status:        'playing',
+  });
+}
+
+function leaveRoom() {
+  if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+  currentRoom = null;
+  mySymbol    = null;
+  introSpoken = false;
+  document.getElementById('roomCodeInput').value = '';
+  showScreen('lobby');
+}
+
+// ==================================================
+// HELPERS
+// ==================================================
+function checkWinner(board) {
+  for (const [a, b, c] of WINNING_COMBOS) {
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
   }
   return null;
 }
 
-function highlightWinningCells(combo) {
-  combo.forEach(i => cells[i].classList.add('winning'));
+function findWinningCombo(board) {
+  for (const combo of WINNING_COMBOS) {
+    const [a, b, c] = combo;
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) return combo;
+  }
+  return null;
 }
 
-function renderCell(cell, player) {
-  cell.textContent = player;
-  cell.classList.add('taken', player.toLowerCase());
+function speak(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate  = 0.95;
+  utter.pitch = 1;
+  window.speechSynthesis.speak(utter);
 }
 
 function setStatus(msg) {
   statusEl.textContent = msg;
-}
-
-function updateScoreboard() {
-  scoreEl1.textContent    = state.scores.X;
-  scoreEl2.textContent    = state.scores.O;
-  scoreElDraw.textContent = state.scores.draw;
-}
-
-function updateActiveCard() {
-  scoreCard1.classList.toggle('active-turn', state.currentPlayer === 'X');
-  scoreCard2.classList.toggle('active-turn', state.currentPlayer === 'O');
-}
-
-function resetRound() {
-  state.board.fill(null);
-  state.currentPlayer = 'X';
-  state.gameOver = false;
-
-  cells.forEach(cell => {
-    cell.textContent = '';
-    cell.className = 'cell';
-  });
-
-  setStatus(`${state.players.X}'s turn (X)`);
-  updateActiveCard();
-}
-
-function newGame() {
-  playerSetup.classList.remove('hidden');
-  gameArea.classList.add('hidden');
-}
-
-function sanitize(str) {
-  const div = document.createElement('div');
-  div.appendChild(document.createTextNode(str));
-  return div.innerHTML;
 }
