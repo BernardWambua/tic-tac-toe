@@ -269,13 +269,15 @@ function renderGameState(data) {
 }
 
 async function onCellClick(event) {
+  // Must read from event synchronously before any await — browsers null currentTarget after async yield
+  const index = parseInt(event.currentTarget.dataset.index, 10);
+
   if (!currentRoom || !mySymbol) return;
 
   const roomRef = db.collection('rooms').doc(currentRoom);
   const snap    = await roomRef.get();
   const data    = snap.data();
 
-  const index = parseInt(event.currentTarget.dataset.index, 10);
   if (data.board[index] || data.winner || data.status !== 'playing') return;
   if (data.currentPlayer !== mySymbol) return;
 
