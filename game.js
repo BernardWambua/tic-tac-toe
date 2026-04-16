@@ -198,7 +198,12 @@ const statusEl   = document.getElementById('status');
 const scoreCard1 = document.getElementById('scoreCard1');
 const scoreCard2 = document.getElementById('scoreCard2');
 
-cells.forEach(cell => cell.addEventListener('click', onCellClick));
+// Capture index in the closure at bind time — avoids event.currentTarget being
+// nulled by the browser when an async function yields (even before its first await).
+cells.forEach(cell => {
+  const index = parseInt(cell.dataset.index, 10);
+  cell.addEventListener('click', () => onCellClick(index));
+});
 document.getElementById('restartBtn').addEventListener('click', restartRound);
 document.getElementById('leaveRoomBtn').addEventListener('click', leaveRoom);
 
@@ -268,10 +273,7 @@ function renderGameState(data) {
   }
 }
 
-async function onCellClick(event) {
-  // Must read from event synchronously before any await — browsers null currentTarget after async yield
-  const index = parseInt(event.currentTarget.dataset.index, 10);
-
+async function onCellClick(index) {
   if (!currentRoom || !mySymbol) return;
 
   const roomRef = db.collection('rooms').doc(currentRoom);
