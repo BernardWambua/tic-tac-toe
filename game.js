@@ -106,23 +106,35 @@ document.getElementById('joinRoomBtn').addEventListener('click', joinRoom);
 
 async function createRoom() {
   const lobbyError = document.getElementById('lobbyError');
+  const createBtn  = document.getElementById('createRoomBtn');
   lobbyError.textContent = '';
-  const playerName = currentUser.displayName || currentUser.email;
-  const roomId = generateRoomCode();
+  createBtn.disabled = true;
+  createBtn.textContent = 'Creating...';
 
-  await db.collection('rooms').doc(roomId).set({
-    board:         Array(9).fill(null),
-    currentPlayer: 'X',
-    players:       { X: { uid: currentUser.uid, name: playerName }, O: null },
-    status:        'waiting',
-    winner:        null,
-    scores:        { X: 0, O: 0, draw: 0 },
-    createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
-  });
+  try {
+    const playerName = currentUser.displayName || currentUser.email;
+    const roomId = generateRoomCode();
 
-  currentRoom = roomId;
-  mySymbol    = 'X';
-  enterGame(roomId);
+    await db.collection('rooms').doc(roomId).set({
+      board:         Array(9).fill(null),
+      currentPlayer: 'X',
+      players:       { X: { uid: currentUser.uid, name: playerName }, O: null },
+      status:        'waiting',
+      winner:        null,
+      scores:        { X: 0, O: 0, draw: 0 },
+      createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    currentRoom = roomId;
+    mySymbol    = 'X';
+    enterGame(roomId);
+  } catch (err) {
+    console.error('createRoom error:', err);
+    lobbyError.textContent = `Failed to create room: ${err.message}`;
+  } finally {
+    createBtn.disabled = false;
+    createBtn.textContent = 'Create Room';
+  }
 }
 
 async function joinRoom() {
@@ -155,15 +167,20 @@ async function joinRoom() {
     return;
   }
 
-  const playerName = currentUser.displayName || currentUser.email;
-  await roomRef.update({
-    'players.O': { uid: currentUser.uid, name: playerName },
-    status:      'playing',
-  });
+  try {
+    const playerName = currentUser.displayName || currentUser.email;
+    await roomRef.update({
+      'players.O': { uid: currentUser.uid, name: playerName },
+      status:      'playing',
+    });
 
-  currentRoom = roomId;
-  mySymbol    = 'O';
-  enterGame(roomId);
+    currentRoom = roomId;
+    mySymbol    = 'O';
+    enterGame(roomId);
+  } catch (err) {
+    console.error('joinRoom error:', err);
+    lobbyError.textContent = `Failed to join room: ${err.message}`;
+  }
 }
 
 function generateRoomCode() {
