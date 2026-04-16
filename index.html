@@ -10,8 +10,36 @@
   <div class="container">
     <h1>Tic-Tac-Toe</h1>
 
-    <!-- ── Screen 1: Auth ── -->
-    <div id="authScreen" class="card">
+    <!-- ── Screen 0: Mode Select ── -->
+    <div id="modeScreen" class="card">
+      <h2>Choose Game Mode</h2>
+      <button id="localModeBtn" class="btn btn-primary mode-btn">
+        🎮 Local Multiplayer
+        <span class="mode-desc">Two players, same device. No account needed.</span>
+      </button>
+      <button id="onlineModeBtn" class="btn btn-secondary mode-btn">
+        🌐 Online Multiplayer
+        <span class="mode-desc">Play with someone on a different device. Account required.</span>
+      </button>
+    </div>
+
+    <!-- ── Screen 1a: Local Setup ── -->
+    <div id="localSetupScreen" class="card hidden">
+      <h2>Player Names</h2>
+      <div class="input-group">
+        <label for="player1Name">Player 1 (X)</label>
+        <input type="text" id="player1Name" placeholder="Enter name" maxlength="20" />
+      </div>
+      <div class="input-group">
+        <label for="player2Name">Player 2 (O)</label>
+        <input type="text" id="player2Name" placeholder="Enter name" maxlength="20" />
+      </div>
+      <button id="startLocalBtn" class="btn btn-primary">Start Game</button>
+      <button id="backFromLocalBtn" class="btn btn-link">← Back</button>
+    </div>
+
+    <!-- ── Screen 1b: Auth ── -->
+    <div id="authScreen" class="card hidden">
       <h2 id="authTitle">Sign In</h2>
 
       <div id="displayNameGroup" class="input-group hidden">
@@ -29,6 +57,7 @@
       <p class="error" id="authError"></p>
       <button id="authSubmit" class="btn btn-primary">Sign In</button>
       <button id="authToggle" class="btn btn-link">Don't have an account? Register</button>
+      <button id="backFromAuthBtn" class="btn btn-link">← Back</button>
     </div>
 
     <!-- ── Screen 2: Lobby ── -->
@@ -89,6 +118,7 @@
 
       <div class="actions">
         <button class="btn btn-secondary" id="restartBtn">Restart Round</button>
+        <button class="btn btn-outline" id="newGameBtn">New Game</button>
       </div>
     </div>
   </div>
