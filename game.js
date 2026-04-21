@@ -11,7 +11,7 @@ const auth = firebase.auth();
 const db   = firebase.firestore();
 
 // ---- Game mode ----
-let gameMode = null; // 'local' | 'online'
+let gameMode = null; // 'local' | 'minimax' | 'ai' | 'online'
 
 // ---- Online state ----
 let currentUser  = null;
@@ -26,6 +26,9 @@ const local = {
   scores:        { X: 0, O: 0, draw: 0 },
   players:       { X: 'Player 1', O: 'Player 2' },
   gameOver:      false,
+  vsComputer:    false,
+  aiStrategy:    null, // 'minimax' | 'groq' | null
+  aiThinking:    false,
 };
 
 let introSpoken = false;
@@ -49,7 +52,34 @@ function showScreen(name) {
 // ==================================================
 document.getElementById('localModeBtn').addEventListener('click', () => {
   gameMode = 'local';
+  local.vsComputer = false;
+  local.aiStrategy = null;
   showScreen('localSetup');
+});
+
+document.getElementById('minimaxModeBtn').addEventListener('click', () => {
+  gameMode = 'minimax';
+  local.vsComputer = true;
+  local.aiStrategy = 'minimax';
+  local.players.X = 'You';
+  local.players.O = 'Minimax';
+  local.scores = { X: 0, O: 0, draw: 0 };
+  enterLocalGame();
+});
+
+document.getElementById('groqModeBtn').addEventListener('click', () => {
+  if (!isGroqModeAvailable()) {
+    alert('Groq AI mode is not configured for this deployment. Please use Local Multiplayer or Computer (Minimax).');
+    return;
+  }
+
+  gameMode = 'ai';
+  local.vsComputer = true;
+  local.aiStrategy = 'groq';
+  local.players.X = 'You';
+  local.players.O = 'Groq AI';
+  local.scores = { X: 0, O: 0, draw: 0 };
+  enterLocalGame();
 });
 
 document.getElementById('onlineModeBtn').addEventListener('click', () => {
@@ -79,6 +109,8 @@ function startLocalGame() {
   local.players.X = sanitize(n1 || 'Player 1');
   local.players.O = sanitize(n2 || 'Player 2');
   local.scores = { X: 0, O: 0, draw: 0 };
+  local.vsComputer = false;
+  local.aiStrategy = null;
 
   enterLocalGame();
 }
@@ -86,7 +118,9 @@ function startLocalGame() {
 function enterLocalGame() {
   introSpoken = false;
   resetLocalBoard();
-  document.getElementById('roomCodeDisplay').textContent = 'Local Game';
+  document.getElementById('roomCodeDisplay').textContent = local.vsComputer
+    ? (local.aiStrategy === 'groq' ? 'Vs Groq AI' : 'Vs Minimax')
+    : 'Local Game';
   document.getElementById('leaveRoomBtn').textContent = 'New Game';
   showScreen('game');
   updateLocalScoreboard();
@@ -101,6 +135,7 @@ function resetLocalBoard() {
   local.board.fill(null);
   local.currentPlayer = 'X';
   local.gameOver = false;
+  local.aiThinking = false;
   introSpoken = false;
 
   cells.forEach(cell => {
@@ -126,7 +161,8 @@ function updateLocalActiveCard() {
 }
 
 function handleLocalClick(index) {
-  if (local.board[index] || local.gameOver) return;
+  if (local.board[index] || local.gameOver || local.aiThinking) return;
+  if (local.vsComputer && local.currentPlayer === 'O') return;
 
   local.board[index] = local.currentPlayer;
   const cell = cells[index];
@@ -157,6 +193,119 @@ function handleLocalClick(index) {
   local.currentPlayer = local.currentPlayer === 'X' ? 'O' : 'X';
   setStatus(`${local.players[local.currentPlayer]}'s turn (${local.currentPlayer})`);
   updateLocalActiveCard();
+
+  if (local.vsComputer && local.currentPlayer === 'O' && !local.gameOver) {
+    queueComputerMove();
+  }
+}
+
+function queueComputerMove() {
+  local.aiThinking = true;
+  setStatus(`${local.players.O} is thinking...`);
+
+  if (local.aiStrategy === 'groq') {
+    queueGroqMove();
+    return;
+  }
+
+  window.setTimeout(() => {
+    const move = getBestComputerMove(local.board, 'O');
+    local.aiThinking = false;
+    if (move !== null) handleLocalClick(move);
+  }, 350);
+}
+
+async function queueGroqMove() {
+  try {
+    const move = await requestGroqMove(local.board, 'O');
+    local.aiThinking = false;
+    handleLocalClick(move);
+  } catch (err) {
+    console.error('Groq move failed:', err);
+    local.aiThinking = false;
+    local.gameOver = true;
+    setStatus('Groq AI is unavailable. Start a new game and choose Computer (Minimax) or another mode.');
+    alert('Groq AI request failed. Please choose another mode from New Game.');
+  }
+}
+
+function isGroqModeAvailable() {
+  return Boolean(window.aiConfig?.enabled && window.aiConfig?.apiBaseUrl);
+}
+
+async function requestGroqMove(board, aiSymbol) {
+  const baseUrl = window.aiConfig?.apiBaseUrl;
+  if (!baseUrl) throw new Error('Missing aiConfig.apiBaseUrl');
+
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ board, aiSymbol }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`AI proxy HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  const move = data?.move;
+
+  if (!Number.isInteger(move) || move < 0 || move > 8 || board[move]) {
+    throw new Error('AI proxy returned an invalid move');
+  }
+
+  return move;
+}
+
+function getBestComputerMove(board, aiSymbol) {
+  const humanSymbol = aiSymbol === 'X' ? 'O' : 'X';
+  const available = board
+    .map((value, idx) => (value ? -1 : idx))
+    .filter(idx => idx !== -1);
+
+  if (!available.length) return null;
+
+  let bestScore = -Infinity;
+  let bestMove = available[0];
+
+  for (const idx of available) {
+    const testBoard = [...board];
+    testBoard[idx] = aiSymbol;
+    const score = minimax(testBoard, false, aiSymbol, humanSymbol);
+    if (score > bestScore) {
+      bestScore = score;
+      bestMove = idx;
+    }
+  }
+
+  return bestMove;
+}
+
+function minimax(board, isMaximizing, aiSymbol, humanSymbol) {
+  const winner = checkWinner(board);
+  if (winner === aiSymbol) return 1;
+  if (winner === humanSymbol) return -1;
+  if (board.every(Boolean)) return 0;
+
+  if (isMaximizing) {
+    let best = -Infinity;
+    for (let i = 0; i < board.length; i++) {
+      if (board[i]) continue;
+      const next = [...board];
+      next[i] = aiSymbol;
+      best = Math.max(best, minimax(next, false, aiSymbol, humanSymbol));
+    }
+    return best;
+  }
+
+  let best = Infinity;
+  for (let i = 0; i < board.length; i++) {
+    if (board[i]) continue;
+    const next = [...board];
+    next[i] = humanSymbol;
+    best = Math.min(best, minimax(next, true, aiSymbol, humanSymbol));
+  }
+  return best;
 }
 
 // ==================================================
@@ -409,7 +558,7 @@ function renderOnlineState(data) {
 }
 
 function onCellClick(index) {
-  if (gameMode === 'local') {
+  if (gameMode === 'local' || gameMode === 'minimax' || gameMode === 'ai') {
     handleLocalClick(index);
   } else if (gameMode === 'online') {
     handleOnlineClick(index);
@@ -445,7 +594,7 @@ async function handleOnlineClick(index) {
 }
 
 async function restartRound() {
-  if (gameMode === 'local') {
+  if (gameMode === 'local' || gameMode === 'minimax' || gameMode === 'ai') {
     resetLocalBoard();
     return;
   }
@@ -502,6 +651,12 @@ function speak(text) {
 
 function setStatus(msg) {
   statusEl.textContent = msg;
+}
+
+const groqModeBtn = document.getElementById('groqModeBtn');
+if (!isGroqModeAvailable()) {
+  groqModeBtn.disabled = true;
+  groqModeBtn.title = 'Groq AI mode is not configured on this deployment.';
 }
 
 

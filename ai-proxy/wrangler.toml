@@ -1,0 +1,4 @@
+name = "tic-tac-groq-proxy"
+main = "worker.js"
+compatibility_date = "2026-04-21"
+workers_dev = true

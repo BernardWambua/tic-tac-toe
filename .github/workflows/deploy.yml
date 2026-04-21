@@ -1,6 +1,7 @@
 name: Deploy to GitHub Pages
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -13,7 +14,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Generate firebase-config.js from secrets
         run: |
@@ -28,6 +29,15 @@ jobs:
             measurementId:     "${{ secrets.FIREBASE_MEASUREMENT_ID }}"
           };
           firebase.initializeApp(firebaseConfig);
+          EOF
+
+      - name: Generate ai-config.js from secrets
+        run: |
+          cat > ai-config.js <<EOF
+          window.aiConfig = {
+            enabled:    "${{ secrets.GROQ_PROXY_URL }}" !== "",
+            apiBaseUrl: "${{ secrets.GROQ_PROXY_URL }}"
+          };
           EOF
 
       - name: Deploy to GitHub Pages
