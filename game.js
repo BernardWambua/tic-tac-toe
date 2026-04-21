@@ -160,9 +160,9 @@ function updateLocalActiveCard() {
   scoreCard2.classList.toggle('active-turn', local.currentPlayer === 'O');
 }
 
-function handleLocalClick(index) {
+function handleLocalClick(index, fromAI = false) {
   if (local.board[index] || local.gameOver || local.aiThinking) return;
-  if (local.vsComputer && local.currentPlayer === 'O') return;
+  if (!fromAI && local.vsComputer && local.currentPlayer === 'O') return;
 
   local.board[index] = local.currentPlayer;
   const cell = cells[index];
@@ -211,7 +211,7 @@ function queueComputerMove() {
   window.setTimeout(() => {
     const move = getBestComputerMove(local.board, 'O');
     local.aiThinking = false;
-    if (move !== null) handleLocalClick(move);
+    if (move !== null) handleLocalClick(move, true);
   }, 350);
 }
 
@@ -219,7 +219,7 @@ async function queueGroqMove() {
   try {
     const move = await requestGroqMove(local.board, 'O');
     local.aiThinking = false;
-    handleLocalClick(move);
+    handleLocalClick(move, true);
   } catch (err) {
     console.error('Groq move failed:', err);
     local.aiThinking = false;
