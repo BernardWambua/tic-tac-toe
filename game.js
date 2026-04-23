@@ -23,6 +23,7 @@ let unsubscribe  = null;
 const local = {
   board:         Array(9).fill(null),
   currentPlayer: 'X',
+  startingRule:  'X', // 'X' | 'O' | 'random'
   scores:        { X: 0, O: 0, draw: 0 },
   players:       { X: 'Player 1', O: 'Player 2' },
   gameOver:      false,
@@ -32,11 +33,13 @@ const local = {
 };
 
 let introSpoken = false;
+let pendingAiStrategy = null;
 
 // ---- Screen helpers ----
 const screens = {
   mode:       document.getElementById('modeScreen'),
   localSetup: document.getElementById('localSetupScreen'),
+  aiSetup:    document.getElementById('aiSetupScreen'),
   auth:       document.getElementById('authScreen'),
   lobby:      document.getElementById('lobbyScreen'),
   game:       document.getElementById('gameArea'),
@@ -58,13 +61,7 @@ document.getElementById('localModeBtn').addEventListener('click', () => {
 });
 
 document.getElementById('minimaxModeBtn').addEventListener('click', () => {
-  gameMode = 'minimax';
-  local.vsComputer = true;
-  local.aiStrategy = 'minimax';
-  local.players.X = 'You';
-  local.players.O = 'Minimax';
-  local.scores = { X: 0, O: 0, draw: 0 };
-  enterLocalGame();
+  openAiSetup('minimax');
 });
 
 document.getElementById('groqModeBtn').addEventListener('click', () => {
@@ -73,13 +70,7 @@ document.getElementById('groqModeBtn').addEventListener('click', () => {
     return;
   }
 
-  gameMode = 'ai';
-  local.vsComputer = true;
-  local.aiStrategy = 'groq';
-  local.players.X = 'You';
-  local.players.O = 'Groq AI';
-  local.scores = { X: 0, O: 0, draw: 0 };
-  enterLocalGame();
+  openAiSetup('groq');
 });
 
 document.getElementById('onlineModeBtn').addEventListener('click', () => {
@@ -90,7 +81,30 @@ document.getElementById('onlineModeBtn').addEventListener('click', () => {
 });
 
 document.getElementById('backFromLocalBtn').addEventListener('click', () => showScreen('mode'));
+document.getElementById('startAiBtn').addEventListener('click', startAiGame);
+document.getElementById('backFromAiBtn').addEventListener('click', () => showScreen('mode'));
 document.getElementById('backFromAuthBtn').addEventListener('click', () => showScreen('mode'));
+
+function openAiSetup(strategy) {
+  pendingAiStrategy = strategy;
+  document.getElementById('aiSetupTitle').textContent =
+    strategy === 'groq' ? 'Groq AI Setup' : 'Minimax Setup';
+  document.getElementById('aiStarterSelect').value = 'random';
+  showScreen('aiSetup');
+}
+
+function startAiGame() {
+  if (!pendingAiStrategy) return;
+
+  gameMode = pendingAiStrategy === 'groq' ? 'ai' : 'minimax';
+  local.vsComputer = true;
+  local.aiStrategy = pendingAiStrategy;
+  local.startingRule = document.getElementById('aiStarterSelect').value;
+  local.players.X = 'You';
+  local.players.O = pendingAiStrategy === 'groq' ? 'Groq AI' : 'Minimax';
+  local.scores = { X: 0, O: 0, draw: 0 };
+  enterLocalGame();
+}
 
 // ==================================================
 // LOCAL MULTIPLAYER
@@ -106,8 +120,10 @@ function sanitize(str) {
 function startLocalGame() {
   const n1 = document.getElementById('player1Name').value.trim();
   const n2 = document.getElementById('player2Name').value.trim();
+  const starter = document.getElementById('starterSelect').value;
   local.players.X = sanitize(n1 || 'Player 1');
   local.players.O = sanitize(n2 || 'Player 2');
+  local.startingRule = starter === 'O' ? 'O' : starter === 'random' ? 'random' : 'X';
   local.scores = { X: 0, O: 0, draw: 0 };
   local.vsComputer = false;
   local.aiStrategy = null;
@@ -127,13 +143,13 @@ function enterLocalGame() {
 
   speak(
     `Welcome to Tic Tac Toe! ${local.players.X} plays X, ` +
-    `${local.players.O} plays O. ${local.players.X} goes first. Good luck!`
+    `${local.players.O} plays O. ${local.players[local.currentPlayer]} goes first. Good luck!`
   );
 }
 
 function resetLocalBoard() {
   local.board.fill(null);
-  local.currentPlayer = 'X';
+  local.currentPlayer = resolveLocalStarter();
   local.gameOver = false;
   local.aiThinking = false;
   introSpoken = false;
@@ -145,6 +161,17 @@ function resetLocalBoard() {
 
   setStatus(`${local.players[local.currentPlayer]}'s turn (${local.currentPlayer})`);
   updateLocalActiveCard();
+
+  if (local.vsComputer && local.currentPlayer === 'O') {
+    queueComputerMove();
+  }
+}
+
+function resolveLocalStarter() {
+  if (local.startingRule === 'random') {
+    return Math.random() < 0.5 ? 'X' : 'O';
+  }
+  return local.startingRule === 'O' ? 'O' : 'X';
 }
 
 function updateLocalScoreboard() {
