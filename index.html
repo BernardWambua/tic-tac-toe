@@ -42,8 +42,31 @@
         <label for="player2Name">Player 2 (O)</label>
         <input type="text" id="player2Name" placeholder="Enter name" maxlength="20" />
       </div>
+      <div class="input-group">
+        <label for="starterSelect">Who Starts?</label>
+        <select id="starterSelect">
+          <option value="X">Player 1 (X)</option>
+          <option value="O">Player 2 (O)</option>
+          <option value="random">Random</option>
+        </select>
+      </div>
       <button id="startLocalBtn" class="btn btn-primary">Start Game</button>
       <button id="backFromLocalBtn" class="btn btn-link">← Back</button>
+    </div>
+
+    <!-- ── Screen 1a-b: AI Setup ── -->
+    <div id="aiSetupScreen" class="card hidden">
+      <h2 id="aiSetupTitle">Computer Game Setup</h2>
+      <div class="input-group">
+        <label for="aiStarterSelect">Who Starts?</label>
+        <select id="aiStarterSelect">
+          <option value="X">You (X)</option>
+          <option value="O">Computer (O)</option>
+          <option value="random" selected>Random</option>
+        </select>
+      </div>
+      <button id="startAiBtn" class="btn btn-primary">Start Game</button>
+      <button id="backFromAiBtn" class="btn btn-link">← Back</button>
     </div>
 
     <!-- ── Screen 1b: Auth ── -->
